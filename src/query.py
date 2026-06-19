@@ -1,0 +1,110 @@
+import os
+from typing import Dict, Any, List
+import chromadb
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+from config import DB_DIR, RETRIEVAL_K, EMBEDDING_MODEL, LLM_MODEL, SIMILARITY_THRESHOLD
+
+load_dotenv()
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+
+# Initialize ChromaDB client
+chroma_client = chromadb.PersistentClient(path=DB_DIR)
+collection = chroma_client.get_or_create_collection(
+    name="documents",
+    metadata={"hnsw:space": "cosine"}
+)
+
+# Initialize Gemini LLM
+# generation_config can be customized as needed
+model = genai.GenerativeModel(model_name=LLM_MODEL)
+
+SYSTEM_PROMPT = """You are an AI assistant specialized in answering questions based ONLY on the provided context documents.
+
+Instructions:
+1. Answer the user's question using ONLY the provided context.
+2. If the answer cannot be found in the context, you MUST respond exactly with: "I'm sorry, but I couldn't find the answer to your question in the provided documents."
+3. Do not use your own knowledge or training data to answer.
+4. When you provide an answer, include inline citations using the format [Source: filename, Page/Section: X].
+"""
+
+def query_rag_pipeline(question: str) -> Dict[str, Any]:
+    """
+    Given a question, retrieves context from vector DB, and generates an answer.
+    Returns a dictionary containing the answer, citations, and raw context.
+    """
+    
+    # 1. Embed the query
+    # task_type="RETRIEVAL_QUERY" is recommended for the search query
+    query_embedding_res = genai.embed_content(
+        model=EMBEDDING_MODEL,
+        content=question,
+        task_type="RETRIEVAL_QUERY"
+    )
+    query_embedding = query_embedding_res['embedding']
+    
+    # 2. Retrieve chunks from ChromaDB
+    results = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=RETRIEVAL_K
+    )
+    
+    if not results['documents'] or not results['documents'][0]:
+        return {
+            "answer": "I'm sorry, but I couldn't find any relevant documents to search.",
+            "citations": [],
+            "raw_context": ""
+        }
+        
+    distances = results['distances'][0]
+    documents = results['documents'][0]
+    metadatas = results['metadatas'][0]
+    
+    # Filter by similarity threshold
+    # For cosine distance, smaller is better (0 = identical, 1 = orthogonal)
+    # distance = 1 - cosine_similarity. So threshold of 0.5 means similarity >= 0.5
+    valid_chunks = []
+    citations = set()
+    
+    for i in range(len(distances)):
+        if distances[i] <= SIMILARITY_THRESHOLD:
+            doc_text = documents[i]
+            meta = metadatas[i]
+            
+            source = meta.get("source", "Unknown")
+            loc = f"Page {meta['page']}" if "page" in meta else f"Section {meta.get('section', 'Unknown')}"
+            
+            citation_tag = f"[Source: {source}, {loc}]"
+            citations.add(citation_tag)
+            
+            valid_chunks.append(f"{citation_tag}\n{doc_text}")
+            
+    if not valid_chunks:
+        return {
+            "answer": "I'm sorry, but I couldn't find the answer to your question in the provided documents.",
+            "citations": [],
+            "raw_context": ""
+        }
+        
+    # 3. Build Context
+    context_block = "\n\n---\n\n".join(valid_chunks)
+    
+    prompt = f"""{SYSTEM_PROMPT}
+
+Context:
+{context_block}
+
+Question: {question}
+
+Answer:"""
+    
+    # 4. Generate Response
+    response = model.generate_content(prompt)
+    answer = response.text
+    
+    return {
+        "answer": answer,
+        "citations": list(citations),
+        "raw_context": context_block
+    }

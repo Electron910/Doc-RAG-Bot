@@ -10,17 +10,14 @@ from dotenv import load_dotenv
 
 from config import DATA_DIR, DB_DIR, CHUNK_SIZE, CHUNK_OVERLAP, EMBEDDING_MODEL
 
-# Load env variables for API key
 load_dotenv()
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# Initialize ChromaDB client
 chroma_client = chromadb.PersistentClient(path=DB_DIR)
 
-# We use the standard name 'documents' for the collection
 collection = chroma_client.get_or_create_collection(
     name="documents",
-    metadata={"hnsw:space": "cosine"} # Use cosine similarity
+    metadata={"hnsw:space": "cosine"}
 )
 
 def load_pdf(file_path: str) -> List[Dict[str, Any]]:
@@ -44,7 +41,6 @@ def load_docx(file_path: str) -> List[Dict[str, Any]]:
     current_section_text = []
     section_counter = 1
     
-    # Arbitrarily group every 10 paragraphs as a "section"
     for para in doc.paragraphs:
         if para.text.strip():
             current_section_text.append(para.text.strip())
@@ -161,7 +157,6 @@ def embed_and_store_chunks(chunks: List[Dict[str, Any]]):
                 else:
                     raise e
         
-        # Add to ChromaDB
         collection.add(
             embeddings=embeddings,
             documents=texts,
@@ -169,7 +164,6 @@ def embed_and_store_chunks(chunks: List[Dict[str, Any]]):
             ids=ids
         )
         
-        # Small sleep to avoid hitting burst limits
         time.sleep(2)
 
 def process_file(file_path: str):
@@ -191,10 +185,6 @@ def process_all_files_in_data_dir():
     for filename in os.listdir(DATA_DIR):
         file_path = os.path.join(DATA_DIR, filename)
         if os.path.isfile(file_path) and not filename.startswith('.'):
-            # Check if already processed by looking for a matching chunk ID
-            # In a robust system we'd track processed files explicitly, but this is a simple check
-            # For this assignment, we will just re-ingest or rely on user to not duplicate files in data dir
-            # To be safer, we can delete existing ones from this file
             collection.delete(where={"source": filename})
             process_file(file_path)
 
