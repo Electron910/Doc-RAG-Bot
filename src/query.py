@@ -9,8 +9,18 @@ from config import DB_DIR, RETRIEVAL_K, EMBEDDING_MODEL, LLM_MODEL, SIMILARITY_T
 load_dotenv()
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# Initialize ChromaDB client
-chroma_client = chromadb.PersistentClient(path=DB_DIR)
+# Initialize ChromaDB client (Cloud with Local Fallback)
+CHROMA_HOST = os.environ.get("CHROMA_HOST")
+CHROMA_API_KEY = os.environ.get("CHROMA_API_KEY")
+
+if CHROMA_HOST and CHROMA_API_KEY:
+    chroma_client = chromadb.HttpClient(
+        host=CHROMA_HOST,
+        headers={"x-chroma-token": CHROMA_API_KEY}
+    )
+else:
+    chroma_client = chromadb.PersistentClient(path=DB_DIR)
+
 collection = chroma_client.get_or_create_collection(
     name="documents",
     metadata={"hnsw:space": "cosine"}
@@ -20,13 +30,13 @@ collection = chroma_client.get_or_create_collection(
 # generation_config can be customized as needed
 model = genai.GenerativeModel(model_name=LLM_MODEL)
 
-SYSTEM_PROMPT = """You are an AI assistant specialized in answering questions based ONLY on the provided context documents.
+SYSTEM_PROMPT = """You are a strict, highly accurate AI assistant. Your only job is to answer the user's question based EXCLUSIVELY on the provided context documents.
 
 Instructions:
-1. Answer the user's question using ONLY the provided context.
-2. If the answer cannot be found in the context, you MUST respond exactly with: "I'm sorry, but I couldn't find the answer to your question in the provided documents."
-3. Do not use your own knowledge or training data to answer.
-4. When you provide an answer, include inline citations using the format [Source: filename, Page/Section: X].
+1. You must answer the question using ONLY the information found in the provided context.
+2. If the provided context does not contain the answer, or if it is irrelevant to the question, you MUST respond exactly with: "I'm sorry, but I couldn't find the answer to your question in the provided documents."
+3. Absolutely DO NOT use your own outside knowledge, training data, or assumptions to answer the question or fill in gaps.
+4. If you find the answer in the context, synthesize a clear response and include inline citations using the format [Source: filename, Page/Section: X].
 """
 
 def query_rag_pipeline(question: str) -> Dict[str, Any]:

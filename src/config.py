@@ -7,8 +7,9 @@ DB_DIR = os.path.join(BASE_DIR, "db")
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 
-RETRIEVAL_K = 3
-SIMILARITY_THRESHOLD = 0.3
+# Retrieval Configuration
+RETRIEVAL_K = 5
+SIMILARITY_THRESHOLD = 0.7 # Relaxed threshold to let the LLM decide if the retrieved context is relevant
 
 EMBEDDING_MODEL = "models/gemini-embedding-2"
 LLM_MODEL = "models/gemini-2.5-flash"
