@@ -26,10 +26,7 @@ def get_collection():
             
             chroma_client = chromadb.HttpClient(
                 host=CHROMA_HOST.strip(' "\'\n\r/'),
-                settings=chromadb.config.Settings(
-                    chroma_client_auth_provider="chromadb.auth.token.TokenAuthClientProvider",
-                    chroma_client_auth_credentials=clean_key
-                )
+                headers={"x-chroma-token": clean_key}
             )
         else:
             print("Connecting to Local ChromaDB...")
