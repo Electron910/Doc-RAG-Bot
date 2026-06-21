@@ -16,11 +16,14 @@ def get_collection():
 
     try:
         if CHROMA_HOST and CHROMA_API_KEY:
-            import chromadb.config
             clean_key = CHROMA_API_KEY.strip(' "\'\n\r')
+            tenant = os.environ.get("CHROMA_TENANT", "default_tenant").strip(' "\'\n\r')
+            database = os.environ.get("CHROMA_DATABASE", "default_database").strip(' "\'\n\r')
             
             chroma_client = chromadb.HttpClient(
                 host=CHROMA_HOST.strip(' "\'\n\r/'),
+                tenant=tenant,
+                database=database,
                 headers={"x-chroma-token": clean_key}
             )
         else:
