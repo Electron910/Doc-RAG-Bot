@@ -21,9 +21,15 @@ def get_collection():
     try:
         if CHROMA_HOST and CHROMA_API_KEY:
             print("Connecting to Chroma Cloud...")
+            import chromadb.config
+            clean_key = CHROMA_API_KEY.strip(' "\'\n\r')
+            
             chroma_client = chromadb.HttpClient(
-                host=CHROMA_HOST,
-                headers={"x-chroma-token": CHROMA_API_KEY}
+                host=CHROMA_HOST.strip(' "\'\n\r/'),
+                settings=chromadb.config.Settings(
+                    chroma_client_auth_provider="chromadb.auth.token.TokenAuthClientProvider",
+                    chroma_client_auth_credentials=clean_key
+                )
             )
         else:
             print("Connecting to Local ChromaDB...")
