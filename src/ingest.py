@@ -13,25 +13,29 @@ from config import DATA_DIR, DB_DIR, CHUNK_SIZE, CHUNK_OVERLAP, EMBEDDING_MODEL
 load_dotenv()
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# Initialize ChromaDB client (Cloud with Local Fallback)
-CHROMA_HOST = os.environ.get("CHROMA_HOST")
-CHROMA_API_KEY = os.environ.get("CHROMA_API_KEY")
+def get_collection():
+    """Lazily initialize and return the ChromaDB collection."""
+    CHROMA_HOST = os.environ.get("CHROMA_HOST")
+    CHROMA_API_KEY = os.environ.get("CHROMA_API_KEY")
 
-if CHROMA_HOST and CHROMA_API_KEY:
-    print("Connecting to Chroma Cloud...")
-    chroma_client = chromadb.HttpClient(
-        host=CHROMA_HOST,
-        headers={"x-chroma-token": CHROMA_API_KEY}
-    )
-else:
-    print("Connecting to Local ChromaDB...")
-    chroma_client = chromadb.PersistentClient(path=DB_DIR)
+    try:
+        if CHROMA_HOST and CHROMA_API_KEY:
+            print("Connecting to Chroma Cloud...")
+            chroma_client = chromadb.HttpClient(
+                host=CHROMA_HOST,
+                headers={"x-chroma-token": CHROMA_API_KEY}
+            )
+        else:
+            print("Connecting to Local ChromaDB...")
+            chroma_client = chromadb.PersistentClient(path=DB_DIR)
 
-# We use the standard name 'documents' for the collection
-collection = chroma_client.get_or_create_collection(
-    name="documents",
-    metadata={"hnsw:space": "cosine"} # Use cosine similarity
-)
+        return chroma_client.get_or_create_collection(
+            name="documents",
+            metadata={"hnsw:space": "cosine"} # Use cosine similarity
+        )
+    except Exception as e:
+        print(f"Error connecting to ChromaDB: {e}")
+        raise e
 
 def load_pdf(file_path: str) -> List[Dict[str, Any]]:
     """Load a PDF and extract text page by page."""
@@ -131,6 +135,7 @@ def embed_and_store_chunks(chunks: List[Dict[str, Any]]):
     if not chunks:
         return
 
+    collection = get_collection()
     BATCH_SIZE = 25
     for i in tqdm(range(0, len(chunks), BATCH_SIZE), desc="Embedding batches"):
         batch = chunks[i:i + BATCH_SIZE]
@@ -183,6 +188,8 @@ def process_file(file_path: str):
     """Process a single file end-to-end."""
     print(f"Processing {file_path}...")
     
+    collection = get_collection()
+    
     # Prevent duplication by deleting any existing chunks for this file
     filename = os.path.basename(file_path)
     try:
@@ -204,6 +211,7 @@ def process_file(file_path: str):
 
 def process_all_files_in_data_dir():
     """Process all files currently in the data directory."""
+    collection = get_collection()
     for filename in os.listdir(DATA_DIR):
         file_path = os.path.join(DATA_DIR, filename)
         if os.path.isfile(file_path) and not filename.startswith('.'):

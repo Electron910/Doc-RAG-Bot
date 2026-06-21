@@ -9,22 +9,27 @@ from config import DB_DIR, RETRIEVAL_K, EMBEDDING_MODEL, LLM_MODEL, SIMILARITY_T
 load_dotenv()
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# Initialize ChromaDB client (Cloud with Local Fallback)
-CHROMA_HOST = os.environ.get("CHROMA_HOST")
-CHROMA_API_KEY = os.environ.get("CHROMA_API_KEY")
+def get_collection():
+    """Lazily initialize and return the ChromaDB collection."""
+    CHROMA_HOST = os.environ.get("CHROMA_HOST")
+    CHROMA_API_KEY = os.environ.get("CHROMA_API_KEY")
 
-if CHROMA_HOST and CHROMA_API_KEY:
-    chroma_client = chromadb.HttpClient(
-        host=CHROMA_HOST,
-        headers={"x-chroma-token": CHROMA_API_KEY}
-    )
-else:
-    chroma_client = chromadb.PersistentClient(path=DB_DIR)
+    try:
+        if CHROMA_HOST and CHROMA_API_KEY:
+            chroma_client = chromadb.HttpClient(
+                host=CHROMA_HOST,
+                headers={"x-chroma-token": CHROMA_API_KEY}
+            )
+        else:
+            chroma_client = chromadb.PersistentClient(path=DB_DIR)
 
-collection = chroma_client.get_or_create_collection(
-    name="documents",
-    metadata={"hnsw:space": "cosine"}
-)
+        return chroma_client.get_or_create_collection(
+            name="documents",
+            metadata={"hnsw:space": "cosine"}
+        )
+    except Exception as e:
+        print(f"Error connecting to ChromaDB: {e}")
+        raise e
 
 # Initialize Gemini LLM
 # generation_config can be customized as needed
@@ -44,6 +49,7 @@ def query_rag_pipeline(question: str) -> Dict[str, Any]:
     Given a question, retrieves context from vector DB, and generates an answer.
     Returns a dictionary containing the answer, citations, and raw context.
     """
+    collection = get_collection()
     
     # 1. Embed the query
     # task_type="RETRIEVAL_QUERY" is recommended for the search query
